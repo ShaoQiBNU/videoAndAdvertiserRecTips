@@ -389,6 +389,18 @@ ST_BOUNDS = [np.exp(np.log(1) + np.log(500/1) * x / bucket_size) for x in range(
 https://arxiv.org/pdf/2206.06003
 
 
+#### binary encoder decoder regression
+https://openreview.net/pdf?id=8WawVDdKqlL
+
+
+#### N进制建模
+
+对label做 二/四/六/八/十/十六/.../N 进制的转化，分别预估转化后每一位上的数值
+
+优点：避开了人工分桶，更加泛化；每一位上的分类类别数有限，相比直接对label做多个分桶，大大降低了分类的难度
+
+缺点：单独预估每一位上的数值，丢失了位数直接数值依赖的信息；会受到样本不均衡问题的影响
+
 
 **回归问题预估为什么会「高区间低估，低区间高估」？**
 
