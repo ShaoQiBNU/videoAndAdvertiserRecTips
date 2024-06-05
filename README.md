@@ -346,9 +346,9 @@ $$ wt_{k}为桶的边界值，k=1,2,3..,K$$
 
 - 根据样本的观看时长得到转换后的label：
 
-当 $wt_{k-1} < wt_{i} < wt_{k}$时，即 $b_{i}=k$，该样本转换后的label为：
+当 $wt_{k-1} < wt_{i} < wt_{k}$时，即 $b_{i}=k$，该样本转换后的label为：[1, 1, ..., 1, 0, ..., 0]
 
-[1, 1, ..., 1, 0, ..., 0]
+![8.jpg](https://github.com/ShaoQiBNU/videoRecTips/blob/main/imgs/8.jpg)
 
 $wt_{i}$ 的样本在 $[wt_{k-1}, wt_{k}]$ 下类别为1，在 $[wt_{1}, wt_{2}]，[wt_{2}, wt_{3}]，...，[wt_{k-2}, wt_{k-1}]$ 下类别为1，在 $[wt_{k}, wt_{k+1}]，[wt_{k+1}, wt_{k+2}]，...，[wt_{K-1}, wt_{K}]$ 下类别为0
 
