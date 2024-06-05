@@ -230,7 +230,7 @@ $$ = \frac{1}{N} \sum_{i=1}^N \frac{\widehat{wt_{i}} - w_{i}}{\widehat{wt_{i}} \
 以 $w_{i}=20$ 为例，画出梯度图像如下所示：
 ![4.png](https://github.com/ShaoQiBNU/videoRecTips/blob/main/imgs/4.png)
 
-可以看出，在低估 $\widehat{wt_{i}}<20$ 和高估 $\widehat{wt_{i}}>20$ 时，梯度具有严重的不对称性。低估时，梯度较大；高估时，梯度较小。在训练时，长视频样本回传梯度大，作用到全样本上，也贡献了短视频的预估，所以会出现长视频低估、短视频高估现象。
+可以看出，在低估 $\widehat{wt_{i}}<20$ 和高估 $\widehat{wt_{i}}>20$ 时，梯度具有严重的不对称性。低估时，梯度较大；高估时，梯度较小。
 
 #### softmax多分类
 将观看时长做分桶离散化，进而将回归问题转为多分类问题，业界方案如下：
@@ -290,32 +290,7 @@ $$ p_{i}(wt_{k})是计算样本 {i} 在各个分桶上的分布， p^\prime_{i}(
 ![5.png](https://github.com/ShaoQiBNU/videoRecTips/blob/main/imgs/5.png)
 
 软化函数的设计则只要label变换后的分布符合场景后验值的分布即可。
-无论哪种软化策略，都依赖分桶，顾名思义是对staytime的一堆边界划分点，可以均匀划分，也可以非均匀划分，具体每个场景的分桶策略可根据场景特性决定，核心原则是让桶内的样本数量分布更均匀。下面给出一些常见的划分例子，分桶策略有以下几种：
-
-- uniform，设定bin_size，进行等距分桶
-```python
-ST_BOUNDS = tf.range(0.0, 3600.0, 1.0, dtype=M.get_dtype())
-```
-
-- segment，根据时长分布，手动分桶
-```python
-# segment
-ST_BOUNDS = np.concatenate(
-    [
-        np.arange(0, 10, 0.2),
-        np.arange(10, 180, 1.0),
-        np.arange(180, 600, 10.0),
-        np.arange(600, 3600, 50.0),
-    ], axis=0
-)
-```
-
-- exp_bin
-时长场景建模推荐该种分桶方式，时长越短，数据更密集，分桶要更细；时长越长，数据更稀疏，分桶要更粗
-
-```python
-ST_BOUNDS = [np.exp(x/40.0) - 1 for x in range(bucket_size)]
-```
+无论哪种软化策略，都依赖分桶，顾名思义是对staytime的一堆边界划分点，可以均匀划分，也可以非均匀划分，具体每个场景的分桶策略可根据场景特性决定，核心原则是让桶内的样本数量分布更均匀。
 
 - 线上serving时，得到样本的预测时长
 
@@ -323,15 +298,15 @@ $$ \widehat{wt_{i}} = \sum_{k=1}^K m_{k} \cdot p_{i,k} $$
 
 $$ m_{k}是第k个桶的均值或中值，p_{i,k}表示样本i预测时长是第k类的概率 $$
 
-##### 扩展应用
-distill softmax方法可以适用于其他回归问题的建模和优化上，如电商场景、直播场景的GMV优化，
-
-电商场景GMV优化，分桶策略采用GMV分布的离散峰值作为桶边界进行分桶，软化函数采用log_norm的正态分布或者log_norm的拉普拉斯分布，类似zlin的log_norm，即先对label和bounds做log变换，然后做正态变换或者拉普拉斯变换。
-
-
 #### 分桶LogLoss建模/ordinal regression建模
 
+该方法来源CV的单目深度估计，将回归问题的预估转化为序数回归，具体见：
+
+https://arxiv.org/pdf/1806.02446
+
 https://github.com/hufu6371/DORN
+
+论文的阅读笔记：https://blog.csdn.net/u012348774/article/details/110715870
 
 简单的多分类存在没有考虑非目标类的之间的序关系的问题，Ordinal Regression则是一种考虑类间序关系的回归方法，推导过程参考：https://zhuanlan.zhihu.com/p/573572151
 
@@ -370,6 +345,44 @@ $$ = 1 \cdot (m_{1} - m_{0}) \cdot p_{i,1} + 1 \cdot (m_{2} - m_{1}) \cdot p_{i,
 $$ b_{i}=k表示样本i的时长lable是k，m_{k}是第k个桶的均值或中值，m_{0} = 0 $$
 
 $$ p_{i,k}表示样本i预测时长是第k个桶的概率，I(k \le b_{i})表示小于等于类别b_{i}时为1，其余为0$$
+
+softmax/distill softmax 和 ordinal regression都依赖分桶策略，分桶策略可根据场景特性决定，核心原则是让桶内的样本数量分布更均匀。下面给出一些常见的划分例子：
+
+- uniform，设定bin_size，进行等距分桶
+```python
+ST_BOUNDS = tf.range(0.0, 3600.0, 1.0, dtype=M.get_dtype())
+```
+
+- segment，根据时长分布，手动分桶
+```python
+# segment
+ST_BOUNDS = np.concatenate(
+    [
+        np.arange(0, 10, 0.2),
+        np.arange(10, 180, 1.0),
+        np.arange(180, 600, 10.0),
+        np.arange(600, 3600, 50.0),
+    ], axis=0
+)
+```
+
+- exp_bin
+时长场景建模推荐该种分桶方式，时长越短，数据更密集，分桶要更细；时长越长，数据更稀疏，分桶要更粗
+
+```python
+ST_BOUNDS = [np.exp(x/40.0) - 1 for x in range(bucket_size)]
+```
+
+电商场景GMV优化，分桶策略采用GMV分布的离散峰值作为桶边界进行分桶，软化函数采用log_norm的正态分布或者log_norm的拉普拉斯分布，类似zlin的log_norm，即先对label和bounds做log变换，然后做正态变换或者拉普拉斯变换。
+
+
+- SID分桶策略，来源https://arxiv.org/pdf/1806.02446
+
+$\alpha = 1, \beta = 500, K = 60$
+
+```python
+ST_BOUNDS = [np.exp(np.log(1) + np.log(500/1) * x / bucket_size) for x in range(bucket_size)]
+```
 
 #### D2Q
 待补充
