@@ -336,6 +336,10 @@ $$I(k \le b_{i})表示小于等于类别b_{i}时为1，其余为0$$
 
 - 线上serving时，得到样本的预测时长
 
+serving时有以下两种方式：
+
+(1) 累积概率 * 桶宽度
+
 $$ \widehat{wt_{i}} = \sum_{k=1}^K p_{i,k} \cdot (m_{k} - m_{k-1}) $$
 
 $$ = p_{i,1} \cdot (m_{1} - m_{0}) + p_{i,2} \cdot (m_{2} - m_{1}) + ... + p_{i,b_{i}} \cdot (m_{b_{i}} - m_{b_{i}-1}) + p_{i,k+1} \cdot (m_{k+2} - m_{k+1}) + ... + p_{i,K} \cdot (m_{K} - m_{K-1}) $$
@@ -343,6 +347,14 @@ $$ = p_{i,1} \cdot (m_{1} - m_{0}) + p_{i,2} \cdot (m_{2} - m_{1}) + ... + p_{i,
 $$ b_{i}=k表示样本i的时长lable是k，m_{k}是第k个桶的均值或中值，m_{0} = 0 $$
 
 $$ p_{i,k}表示样本i预测时长是第k个桶的概率 $$
+
+(2) 取概率分布中位数的值
+
+$$ \widehat{b_{i}} = \sum_{k=1}^K I(f_k(x_i) \ge 0.5) $$
+
+
+$$ \widehat{wt_{i}} = \frac{m_{\widehat{b_{i}}} + m_{\widehat{b_{i}} + 1}}{2} $$
+
 
 softmax/distill softmax 和 ordinal regression都依赖分桶策略，分桶策略可根据场景特性决定，核心原则是让桶内的样本数量分布更均匀。下面给出一些常见的划分例子：
 
@@ -381,6 +393,8 @@ $\alpha = 1, \beta = 500, K = 60$
 ```python
 ST_BOUNDS = [np.exp(np.log(1) + np.log(500/1) * x / bucket_size) for x in range(bucket_size)]
 ```
+
+但是 $K$ 个二分类任务中，数值越大的样本，二分类label为1的数量也会更多，这**实际上是给高区间样本做了隐形的加权，理论上最后预估会偏高**。实际线上实验结果也证明：高区间低估缓解，低区间高估加剧。
 
 #### D2Q
 待补充
