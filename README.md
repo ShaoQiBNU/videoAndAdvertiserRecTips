@@ -31,6 +31,8 @@
 
 1. 损失函数优化
 
+(1) 单loss函数优化
+
 优化方向：损失函数上做优化，不同的损失对数据有不同的先验分布假设，针对业务场景做出适配调整。
 
 
@@ -38,19 +40,13 @@
 | :----:| :----: | :----: |
 | MSE | error（即label-pred）服从[正态分布](https://zh.wikipedia.org/wiki/%E6%AD%A3%E6%80%81%E5%88%86%E5%B8%83) | 假设 $y_{i} = h_{\theta}(x_{i};\theta) + \epsilon_{i}$, 其中 $\epsilon_{i}$ 为error，假设erro服从高斯分布: $\epsilon_{i} \sim \mathcal{N}(0, \sigma^2)时$, 其概率密度函数为: $p(\epsilon_{i}) = \frac{1}{\sqrt{2\pi}\sigma}exp(-\frac{\epsilon_{i}^2}{2\sigma^2})$ 由误差定义，可得: $p(y_{i} \| x_{i}; \theta) = \frac{1}{\sqrt{2\pi}\sigma}exp(-\frac{(y_{i} - h_{\theta}(x_{i};\theta))^2}{2\sigma^2})$, 再用最大似然原理最大化上式，可得: $$log(L(\theta)) = log \prod_{i=1}^{N} p(y_{i} \| x_{i}; \theta) = Nlog\frac{1}{\sqrt{2\pi}\sigma} - \frac{1}{2\sigma^2}\sum_{i=1}^{N} (y_{i} - h_{\theta}(x_{i};\theta))^2$$ $$\Leftrightarrow min \frac{1}{2} \sum_{i=1}^{N} (y_{i} - h_{\theta}(x_{i};\theta))^2$$ |
 | MAE | error（即label-pred）服从[拉普拉斯分布](https://zh.wikipedia.org/wiki/%E6%8B%89%E6%99%AE%E6%8B%89%E6%96%AF%E5%88%86%E5%B8%83) | 假设 $y_{i} = h_{\theta}(x_{i};\theta) + \epsilon_{i}$, 其中 $\epsilon_{i}$ 为error，假设erro服从拉普拉斯分布: $\epsilon_{i} \sim \mathcal{L}(0, 1)时$, 可得: $p(y_{i} \| x_{i}; \theta) = \frac{1}{2}exp(-\|y_{i} - h_{\theta}(x_{i};\theta)\|)$, 再用最大似然原理最大化上式，可得: $$log(L(\theta)) = log \prod_{i=1}^{N} p(y_{i} \| x_{i}; \theta) = Nlog\frac{1}{2} - \sum_{i=1}^{N} \|y_{i} - h_{\theta}(x_{i};\theta)\|$$ $$\Leftrightarrow min \sum_{i=1}^{N} \|y_{i} - h_{\theta}(x_{i};\theta)\|$$ |
+| Log_normal MSE Loss | error（即label-pred）做log变换后服从正态分布 |
+| Gamma Loss | error（即label-pred）服从Gamma分布 |
+| Poisson Regression Loss | error（即label-pred）服从泊松分布 |
 | Huber Loss | Huber loss是MAE和MSE损失函数的结合，具备两者的优点 |
 | Huberpp Loss | MSE/MAE/Huber Loss关注的是绝对误差，而在业务中，关注的更多的是相对误差 |
 | AM Loss | 以上Loss均是对称性Loss，而在业务中，我们对于高低估问题关注程度不同，可以据此调整 |
 
-
-2. 回归转分类
-优化方向：采用各类变换方式将回归问题转为分类问题进行优化。
-
-
-
-
-
-3. calibration
 
 
 #### MSE Loss
@@ -132,6 +128,9 @@ C \cdot S_{l} \cdot [-ln(LB) \cdot |label - pred| + ln(LB) \cdot (1-LB) \cdot la
 
 #### log normal(ZILN)
 
+
+2. 回归转分类
+优化方向：采用各类变换方式将回归问题转为分类问题进行优化，具体如下：
 
 #### WCE加权分类
 
@@ -418,8 +417,36 @@ https://openreview.net/pdf?id=8WawVDdKqlL
 当线上后验数据呈现明显的多峰、长尾分布时，非常适合用GMM建模
 
 
-
 缺点：只适合多峰分布，虽然理论上叠加足够多的高斯分布可以拟合任意概率分布，但是过多的高斯分布会极大地增加参数量，使模型难以收敛。对于类似长尾分布的场景，可以用，但没必要
+
+
+(2) loss分区间优化
+
+单loss的优化并不能使先验假设完全契合线上数据的后验表现，因而很难在全区间上优化预估偏差，因此可以考虑对loss采用不同的损失函数优化，做多损失函数的bagging优化。
+
+HEterogeneous Stacking Softmax
+
+模块一：stacking softmax
+
+motivation：GMV呈多峰分布，存在sample unbalance问题，分桶softmax的建模方法会受多类样本主导，影响分类误差，不能很好地兼顾全局。本文采取coarse to fine的形式，先用粗分桶softmax缓解样本不平衡/多峰的问题，再进行更精细的建模。
+Stack softmax：整体框架分为两层，第一层将全部样本空间根据峰值和样本量划分为6个子区间（[0, 15], (15, 30], (30, 75], (75, 300], (300, 1000], [1000,)），使用一个6分类的softmax任务预估样本落在i区间的概率；第二层有6个子任务sub_task_i（i=1,2,3,4,5,6），只使用各自区间的样本训练，拟合最终的gmv label。该模块的预估输出值如下，p_i是第一层softmax输出的落在i区间的概率，prediction_i是第二层子任务i的gmv预估值。
+
+$$stacking\_softmax = \sum_{sub\_task_i} p_i*prediction_i$$
+
+对于子任务的分桶方式，因为GMV分布存在“多峰”的特点，比较自然的想法是将分布差异的区间划分在不同分桶，同时考虑样本量以及峰值分布在桶中间位置，第一层6个分桶划分为了[0, 15], (15, 30], (30, 75], (75, 300], (300, 1000], [1000,) 6个子区间，每个区间采用不同的损失函数，低区间用mse，高区间用distill softmax，只用各自区间的样本训练，拟合最终的label。
+
+模块二：Heterogeneous task
+
+motivation：stacking softmax task的加入对模型中的wce task起到了辅助优化的作用，同时wce注重低金额的优化，stacking softmax在优化高金额的同时保证低金额不劣化，通过融合同一个模型的两个task可以获得一个全局更优的结果。
+方法：采用bagging的集成方式融合两个不同的算法，即采用(wce + stacking softmax)/2作为最终预估结果，可以结合了两者的优势。
+
+
+3. calibration
+
+
+
+
+
 
 
 **回归问题预估为什么会「高区间低估，低区间高估」？**
